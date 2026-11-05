@@ -49,6 +49,18 @@ data Mealy state input output = Mealy
 - **explicit** `Mealy<S, I, O>` where something must look at the state (topology checks via `phase(s)`),
 - **hidden** `Machine<I, O>` for composition and public signatures.
 
+### Parallel composition and `both`
+
+The talk's second combinator:
+
+```haskell
+parallel :: Mealy a b -> Mealy c d -> Mealy (a, c) (b, d)
+```
+
+Our machines can emit several outputs per step, so `parallel` pairs the output **lists**: `Machine<[A, C], [B[], D[]]>`. Each step then emits exactly one pair and nothing is dropped. Zipping outputs instead would lose values when the counts differ.
+
+`both(f, g) = lmapMachine(a => [a, a], parallel(f, g))` is crem's `fanOut` (`&&&`). It is the lockstep product used for law checks: `both(dUC, andThen(dUC, dUC))` must give equal output lists on every step, the same check as `tla/DistinctIdempotent.tla`.
+
 `test/machine.test.ts` checks that hiding preserves behaviour, that `andThen` equals `compose`, the identity and associativity laws, and that `pipeMachines` agrees with RxJS `pipe`.
 
 ## 4. What makes it scale: contracts per operator

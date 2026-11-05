@@ -46,6 +46,37 @@ export const andThen = <A, B, O>(f: Machine<A, B>, g: Machine<B, O>): Machine<A,
   },
 });
 
+/** Pre-composition with a pure function (Profunctor lmap). */
+export const lmapMachine = <I0, I, O>(h: (i: I0) => I, m: Machine<I, O>): Machine<I0, O> => ({
+  step: (i) => {
+    const [os, next] = m.step(h(i));
+    return [os, lmapMachine(h, next)];
+  },
+});
+
+/**
+ * Parallel composition (crem `parallel`, Arrow `***`).
+ * Each machine may emit several outputs per step, so the result pairs the lists:
+ * exactly one pair per step, and nothing is dropped.
+ */
+export const parallel = <A, B, C, D>(
+  f: Machine<A, B>,
+  g: Machine<C, D>,
+): Machine<readonly [A, C], readonly [readonly B[], readonly D[]]> => ({
+  step: ([a, c]) => {
+    const [bs, f2] = f.step(a);
+    const [ds, g2] = g.step(c);
+    return [[[bs, ds]], parallel(f2, g2)];
+  },
+});
+
+/** Same input to both machines (crem `fanOut`, Arrow `&&&`): lmap duplicate, then parallel. */
+export const both = <A, B, D>(
+  f: Machine<A, B>,
+  g: Machine<A, D>,
+): Machine<A, readonly [readonly B[], readonly D[]]> =>
+  lmapMachine((a: A) => [a, a] as const, parallel(f, g));
+
 /** Compose any number of same-typed stages, like RxJS pipe for MonoTypeOperatorFunction. */
 export const pipeMachines = <T>(...ms: readonly Machine<T, T>[]): Machine<T, T> =>
   ms.reduce<Machine<T, T>>((acc, m) => andThen(acc, m), idMachine<T>());

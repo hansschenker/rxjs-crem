@@ -3,7 +3,7 @@ import fc from "fast-check";
 import { distinctUntilChanged, filter, pipe, scan } from "rxjs";
 import { C, E, N, compose, run, type Note } from "../src/mealy";
 import { distinctM, filterM, scanM } from "../src/models";
-import { andThen, hide, idMachine, pipeMachines, runMachine, type Machine } from "../src/machine";
+import { andThen, both, hide, idMachine, parallel, pipeMachines, runMachine, type Machine } from "../src/machine";
 import { runRx, sameNotes } from "../src/laws";
 import { isEven, sum } from "../src/specs";
 
@@ -11,6 +11,12 @@ const BOOM = new Error("boom");
 const notes: fc.Arbitrary<Note<number>[]> = fc
   .tuple(fc.array(fc.integer({ min: 0, max: 3 }), { maxLength: 8 }), fc.constantFrom("none", "C", "E"))
   .map(([xs, end]) => [...xs.map((x) => N(x)), ...(end === "C" ? [C] : end === "E" ? [E(BOOM)] : [])]);
+/** Any single notification, for inputs where the protocol order does not matter. */
+const note: fc.Arbitrary<Note<number>> = fc.oneof(
+  fc.integer({ min: 0, max: 3 }).map((x) => N(x)),
+  fc.constant(C),
+  fc.constant(E(BOOM)),
+);
 const holds = (check: (ns: Note<number>[]) => boolean) => fc.assert(fc.property(notes, check), { numRuns: 300 });
 
 type M = Machine<Note<number>, Note<number>>;
@@ -50,6 +56,35 @@ describe("hidden-state machines", () => {
         runMachine(pipeMachines(...stages()), ns),
         runRx(pipe(filter(isEven), scan(sum, 0), distinctUntilChanged<number>()), ns),
       )));
+
+  it("parallel: each side behaves as if it ran alone", () =>
+    fc.assert(
+      fc.property(fc.array(fc.tuple(note, note), { maxLength: 10 }), (pairs) => {
+        const out = runMachine(parallel(hide(scanM(sum, 0)), hide(distinctM<number>())), pairs);
+        const left = out.flatMap(([bs]) => bs);
+        const right = out.flatMap(([, ds]) => ds);
+        return out.length === pairs.length
+          && sameNotes(left, run(scanM(sum, 0), pairs.map(([a]) => a)))
+          && sameNotes(right, run(distinctM<number>(), pairs.map(([, c]) => c)));
+      }),
+      { numRuns: 300 },
+    ));
+
+  it("both: dUC . dUC equals dUC on every step (lockstep law check)", () =>
+    holds((ns) => {
+      const once = hide(distinctM<number>());
+      const twice = andThen(hide(distinctM<number>()), hide(distinctM<number>()));
+      return runMachine(both(once, twice), ns).every(([l, r]) => sameNotes(l, r));
+    }));
+
+  it("both finds a broken law step by step", () => {
+    const bad = (ns: Note<number>[]) => {
+      const dUC = hide(distinctM<number>());
+      const evens = hide(filterM(isEven));
+      return runMachine(both(dUC, evens), ns).every(([l, r]) => sameNotes(l, r));
+    };
+    expect(bad([N(1)])).toBe(false);
+  });
 
   it("composed type stays two-parameter", () => {
     const composed: Machine<Note<number>, Note<number>> = pipeMachines(...stages());
