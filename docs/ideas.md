@@ -31,6 +31,26 @@ Other compositions:
 
 The composed state space is the product of the parts. That is why the next point matters.
 
+### Two forms: explicit state and hidden state
+
+The Mealy type from Marco Perone's crem talk keeps the state as a type parameter:
+
+```haskell
+data Mealy state input output = Mealy
+  { initialState :: state
+  , action       :: state -> input -> (state, output)
+  }
+```
+
+`Mealy<S, I, O>` in `src/mealy.ts` is the same, with a list of outputs per step. With a visible state type, composed types grow (`readonly [readonly [S1, S2], S3]`). For composition, crem hides the state existentially, so every machine has a two-parameter type and fits `Category` and `Arrow`.
+
+`Machine<I, O>` in `src/machine.ts` does the same in TypeScript with a closure: `hide` turns a `Mealy<S, I, O>` into a `Machine<I, O>`, and `andThen` / `pipeMachines` compose without the state appearing in the type. Both forms stay:
+
+- **explicit** `Mealy<S, I, O>` where something must look at the state (topology checks via `phase(s)`),
+- **hidden** `Machine<I, O>` for composition and public signatures.
+
+`test/machine.test.ts` checks that hiding preserves behaviour, that `andThen` equals `compose`, the identity and associativity laws, and that `pipeMachines` agrees with RxJS `pipe`.
+
 ## 4. What makes it scale: contracts per operator
 
 Each operator's Mealy machine gets a contract **assumption about input ⇒ guarantee about output**, checked once, in isolation. Contracts chain by the assume–guarantee rule:
