@@ -114,6 +114,40 @@ export const alternative = <A, B, C, D>(
 export const either = <A, C, B>(f: Machine<A, B>, g: Machine<C, B>): Machine<Either<A, C>, B> =>
   rmapMachine((e: Either<B, B>) => e.value, alternative(f, g));
 
+/** A stateless machine from a function returning zero or more outputs (Arrow `arr`, over lists). */
+export const fromFunction = <A, B>(h: (a: A) => readonly B[]): Machine<A, B> => ({
+  step: (a) => [h(a), fromFunction(h)],
+});
+
+/**
+ * Feedback (crem `feedback`): every output of `f` is emitted and also fed to `g`;
+ * every output of `g` is fed back into `f`, until `g` returns nothing.
+ * The loop runs depth-first, which matches RxJS `expand` with synchronous inners.
+ * `fuel` bounds the number of inner steps per input, so a loop without an exit
+ * throws instead of hanging.
+ */
+export const feedback = <A, B>(f: Machine<A, B>, g: Machine<B, A>, fuel = 10_000): Machine<A, B> => ({
+  step: (a) => {
+    let f2 = f;
+    let g2 = g;
+    let budget = fuel;
+    const out: B[] = [];
+    const go = (x: A): void => {
+      if (budget-- <= 0) throw new Error(`feedback: no exit within ${fuel} steps`);
+      const [bs, fNext] = f2.step(x);
+      f2 = fNext;
+      for (const b of bs) {
+        out.push(b);
+        const [as, gNext] = g2.step(b);
+        g2 = gNext;
+        for (const back of as) go(back);
+      }
+    };
+    go(a);
+    return [out, feedback(f2, g2, fuel)];
+  },
+});
+
 /** Compose any number of same-typed stages, like RxJS pipe for MonoTypeOperatorFunction. */
 export const pipeMachines = <T>(...ms: readonly Machine<T, T>[]): Machine<T, T> =>
   ms.reduce<Machine<T, T>>((acc, m) => andThen(acc, m), idMachine<T>());

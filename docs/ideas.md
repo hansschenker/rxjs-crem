@@ -75,6 +75,20 @@ Only the machine the input is tagged for steps; the other keeps its state. This 
 
 Edge case: `either` does not encode `merge`'s completion policy. `merge` completes once all sources have completed; `either` passes each side's `complete` straight through. That policy is a separate small machine (count completions, emit one `complete` at the end), and which source fires next is a TLA+ question.
 
+### Feedback and `expand`
+
+The talk's fourth combinator:
+
+```haskell
+feedback :: Mealy a [b] -> Mealy b [a] -> Mealy a [b]
+```
+
+Every output of the first machine is emitted and fed to the second; every output of the second is fed back into the first, until the second returns an empty list. The lists in the type are what make the loop well defined: the empty list is the exit. With exactly one output per step the loop could never stop, which is the instantaneous-loop problem of Mealy feedback.
+
+With the first machine as identity and the second as `project`, this is RxJS `expand`. `feedback` runs the loop depth-first, which matches `expand` with synchronous inner Observables; the test suite checks this against real `expand`, including branching projections. Both machines keep their state across the loop and across inputs.
+
+Edge case: a second machine that never returns an empty list loops forever. The TypeScript `feedback` takes a step budget (`fuel`) per input and throws when it runs out. With asynchronous inners, `expand`'s order depends on scheduling and is no longer this deterministic depth-first order; that belongs to the TLA+ layer.
+
 `test/machine.test.ts` checks that hiding preserves behaviour, that `andThen` equals `compose`, the identity and associativity laws, and that `pipeMachines` agrees with RxJS `pipe`.
 
 ## 4. What makes it scale: contracts per operator

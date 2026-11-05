@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import fc from "fast-check";
-import { Subject, distinctUntilChanged, filter, map, merge, pipe, scan } from "rxjs";
+import { Subject, distinctUntilChanged, expand, filter, from, map, merge, pipe, scan } from "rxjs";
 import { C, E, N, compose, run, type Note } from "../src/mealy";
 import { distinctM, filterM, mapM, scanM } from "../src/models";
-import { alternative, andThen, both, either, hide, idMachine, left, parallel, pipeMachines, right, runMachine, type Either, type Machine } from "../src/machine";
+import { alternative, andThen, both, either, feedback, fromFunction, hide, idMachine, left, parallel, pipeMachines, right, runMachine, type Either, type Machine } from "../src/machine";
 import { runRx, sameNotes } from "../src/laws";
 import { double, isEven, sum } from "../src/specs";
 
@@ -132,6 +132,31 @@ describe("hidden-state machines", () => {
     // merge would emit 1 and complete only after both sources complete;
     // either passes the first source's complete straight through.
     expect(out.map((n) => n.kind)).toEqual(["C", "N"]);
+  });
+
+  it("feedback matches RxJS expand, including branching", () =>
+    fc.assert(
+      fc.property(fc.array(fc.integer({ min: 0, max: 4 }), { maxLength: 5 }), (xs) => {
+        const project = (x: number): number[] => (x < 4 ? [x + 1, x + 2] : []);
+        const model = runMachine(feedback(idMachine<number>(), fromFunction(project)), xs);
+        const actual: number[] = [];
+        from(xs).pipe(expand((x) => from(project(x)))).subscribe((v) => actual.push(v));
+        return model.length === actual.length && model.every((v, i) => v === actual[i]);
+      }),
+      { numRuns: 300 },
+    ));
+
+  it("feedback keeps the state of both machines across inputs", () => {
+    // f counts how many values it has seen in total; g feeds back once per value below 2
+    const counter = hide(scanM((n: number) => n + 1, 0));
+    const once = fromFunction((b: Note<number>) => (b.kind === "N" && b.value < 2 ? [N(0)] : []));
+    const out = runMachine(feedback(counter, once), [N(9), N(9)]);
+    expect(out.map((n) => (n.kind === "N" ? n.value : n.kind))).toEqual([1, 2, 3]);
+  });
+
+  it("edge case: a loop without an exit throws instead of hanging", () => {
+    const echo = fromFunction((b: number) => [b]);
+    expect(() => runMachine(feedback(idMachine<number>(), echo, 100), [1])).toThrow(/no exit/);
   });
 
   it("composed type stays two-parameter", () => {
