@@ -12,7 +12,7 @@ const targets = [
 ] as const;
 
 for (const { module, topology } of targets) {
-  writeFileSync(`generated/${module}.mmd`, toMermaid(topology) + "\n");
+  writeFileSync(`generated/${module}.mmd`, toMermaid(topology as never) + "\n");
   writeFileSync(`generated/${module}.tla`, toTla(module, topology as never) + "\n");
   writeFileSync(`generated/${module}.cfg`, toTlaCfg() + "\n");
 }
