@@ -61,6 +61,20 @@ Our machines can emit several outputs per step, so `parallel` pairs the output *
 
 `both(f, g) = lmapMachine(a => [a, a], parallel(f, g))` is crem's `fanOut` (`&&&`). It is the lockstep product used for law checks: `both(dUC, andThen(dUC, dUC))` must give equal output lists on every step, the same check as `tla/DistinctIdempotent.tla`.
 
+### Alternative composition and `either`
+
+The talk's third combinator, with the output read as `Either b d`:
+
+```haskell
+alternative :: Mealy a b -> Mealy c d -> Mealy (Either a c) (Either b d)
+```
+
+Only the machine the input is tagged for steps; the other keeps its state. This is the coproduct twin of `parallel`'s product (crem `Choice` vs `Strong`).
+
+`either(f, g) = rmapMachine(untag, alternative(f, g))` is crem's `fanIn` (`|||`) and models `merge(a$.pipe(f), c$.pipe(g))`: the tagged input sequence is the interleaving of the two sources, and each source keeps its own operator state. The test suite checks this against real RxJS `merge` on next values.
+
+Edge case: `either` does not encode `merge`'s completion policy. `merge` completes once all sources have completed; `either` passes each side's `complete` straight through. That policy is a separate small machine (count completions, emit one `complete` at the end), and which source fires next is a TLA+ question.
+
 `test/machine.test.ts` checks that hiding preserves behaviour, that `andThen` equals `compose`, the identity and associativity laws, and that `pipeMachines` agrees with RxJS `pipe`.
 
 ## 4. What makes it scale: contracts per operator

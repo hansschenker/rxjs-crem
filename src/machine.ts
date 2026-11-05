@@ -77,6 +77,43 @@ export const both = <A, B, D>(
 ): Machine<A, readonly [readonly B[], readonly D[]]> =>
   lmapMachine((a: A) => [a, a] as const, parallel(f, g));
 
+/** Post-composition with a pure function (Profunctor rmap). */
+export const rmapMachine = <I, O, O2>(h: (o: O) => O2, m: Machine<I, O>): Machine<I, O2> => ({
+  step: (i) => {
+    const [os, next] = m.step(i);
+    return [os.map(h), rmapMachine(h, next)];
+  },
+});
+
+export type Either<L, R> =
+  | { readonly tag: "left"; readonly value: L }
+  | { readonly tag: "right"; readonly value: R };
+
+export const left = <L, R = never>(value: L): Either<L, R> => ({ tag: "left", value });
+export const right = <R, L = never>(value: R): Either<L, R> => ({ tag: "right", value });
+
+/**
+ * Alternative composition (crem `alternative`, ArrowChoice `+++`).
+ * Only the machine the input is tagged for steps; the other keeps its state.
+ */
+export const alternative = <A, B, C, D>(
+  f: Machine<A, B>,
+  g: Machine<C, D>,
+): Machine<Either<A, C>, Either<B, D>> => ({
+  step: (e) => {
+    if (e.tag === "left") {
+      const [bs, f2] = f.step(e.value);
+      return [bs.map((b) => left<B, D>(b)), alternative(f2, g)];
+    }
+    const [ds, g2] = g.step(e.value);
+    return [ds.map((d) => right<D, B>(d)), alternative(f, g2)];
+  },
+});
+
+/** Merge two machines with the same output (crem `fanIn`, ArrowChoice `|||`). Models merge with per-source pipelines. */
+export const either = <A, C, B>(f: Machine<A, B>, g: Machine<C, B>): Machine<Either<A, C>, B> =>
+  rmapMachine((e: Either<B, B>) => e.value, alternative(f, g));
+
 /** Compose any number of same-typed stages, like RxJS pipe for MonoTypeOperatorFunction. */
 export const pipeMachines = <T>(...ms: readonly Machine<T, T>[]): Machine<T, T> =>
   ms.reduce<Machine<T, T>>((acc, m) => andThen(acc, m), idMachine<T>());

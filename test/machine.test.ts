@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 import fc from "fast-check";
-import { distinctUntilChanged, filter, pipe, scan } from "rxjs";
+import { Subject, distinctUntilChanged, filter, map, merge, pipe, scan } from "rxjs";
 import { C, E, N, compose, run, type Note } from "../src/mealy";
-import { distinctM, filterM, scanM } from "../src/models";
-import { andThen, both, hide, idMachine, parallel, pipeMachines, runMachine, type Machine } from "../src/machine";
+import { distinctM, filterM, mapM, scanM } from "../src/models";
+import { alternative, andThen, both, either, hide, idMachine, left, parallel, pipeMachines, right, runMachine, type Either, type Machine } from "../src/machine";
 import { runRx, sameNotes } from "../src/laws";
-import { isEven, sum } from "../src/specs";
+import { double, isEven, sum } from "../src/specs";
 
 const BOOM = new Error("boom");
 const notes: fc.Arbitrary<Note<number>[]> = fc
@@ -84,6 +84,54 @@ describe("hidden-state machines", () => {
       return runMachine(both(dUC, evens), ns).every(([l, r]) => sameNotes(l, r));
     };
     expect(bad([N(1)])).toBe(false);
+  });
+
+  const tagged: fc.Arbitrary<Either<Note<number>, Note<number>>[]> = fc.array(
+    fc.oneof(note.map((n) => left<Note<number>, Note<number>>(n)), note.map((n) => right<Note<number>, Note<number>>(n))),
+    { maxLength: 12 },
+  );
+
+  it("alternative: only the tagged side steps, each side behaves as if it ran alone", () =>
+    fc.assert(
+      fc.property(tagged, (es) => {
+        const out = runMachine(alternative(hide(scanM(sum, 0)), hide(distinctM<number>())), es);
+        const pick = <T>(xs: readonly Either<T, T>[], tag: "left" | "right") =>
+          xs.filter((x) => x.tag === tag).map((x) => x.value);
+        return sameNotes(pick(out, "left"), run(scanM(sum, 0), pick(es, "left")))
+          && sameNotes(pick(out, "right"), run(distinctM<number>(), pick(es, "right")));
+      }),
+      { numRuns: 300 },
+    ));
+
+  it("either matches RxJS merge(a$.pipe(f), c$.pipe(g)) on next values", () =>
+    fc.assert(
+      fc.property(
+        fc.array(fc.oneof(fc.integer({ min: 0, max: 3 }).map((x) => left<number, number>(x)), fc.integer({ min: 0, max: 3 }).map((x) => right<number, number>(x))), { maxLength: 12 }),
+        (es) => {
+          const model = runMachine(
+            either(hide(mapM(double)), hide(scanM(sum, 0))),
+            es.map((e) => (e.tag === "left" ? left<Note<number>, Note<number>>(N(e.value)) : right<Note<number>, Note<number>>(N(e.value)))),
+          );
+          const a$ = new Subject<number>();
+          const c$ = new Subject<number>();
+          const actual: number[] = [];
+          merge(a$.pipe(map(double)), c$.pipe(scan(sum, 0))).subscribe((v) => actual.push(v));
+          for (const e of es) (e.tag === "left" ? a$ : c$).next(e.value);
+          const expected = model.flatMap((n) => (n.kind === "N" ? [n.value] : []));
+          return expected.length === actual.length && expected.every((v, i) => v === actual[i]);
+        },
+      ),
+      { numRuns: 300 },
+    ));
+
+  it("edge case: either does not encode merge's completion policy", () => {
+    const out = runMachine(
+      either(hide(mapM(double)), hide(scanM(sum, 0))),
+      [left<Note<number>, Note<number>>(C), right<Note<number>, Note<number>>(N(1))],
+    );
+    // merge would emit 1 and complete only after both sources complete;
+    // either passes the first source's complete straight through.
+    expect(out.map((n) => n.kind)).toEqual(["C", "N"]);
   });
 
   it("composed type stays two-parameter", () => {
