@@ -49,6 +49,8 @@ java -cp tla2tools.jar tlc2.TLC -config tla/DistinctIdempotent.cfg tla/DistinctI
 
 ## Further reading
 
+- [crem on GitHub](https://github.com/marcosh/crem) and its guide [How to compose machines](https://github.com/marcosh/crem/blob/main/docs/how-to-compose-machines.md).
+- [Talk on crem by its author, Marco Perone](https://www.youtube.com/watch?v=w8mnp4SGT_M&t=2246s) (video).
 - `docs/ideas.md` — the design discussion behind this prototype: Mealy machines for operator policies, TLA+/LTL for pipelines, contracts per operator, and which crem ideas transfer.
 - `docs/tla-integration.md` — how the TypeScript side and the TLA+ side connect.
 
