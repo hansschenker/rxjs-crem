@@ -91,6 +91,26 @@ Edge case: a second machine that never returns an empty list loops forever. The 
 
 `test/machine.test.ts` checks that hiding preserves behaviour, that `andThen` equals `compose`, the identity and associativity laws, and that `pipeMachines` agrees with RxJS `pipe`.
 
+### Typed topology: crem's stronger machine type
+
+The step towards "Representable" in crem puts the topology into the machine's type:
+
+```haskell
+data Machine (topology :: Topology vertex) input output
+```
+
+The compiler then enforces the allowed transitions, and the same topology can be reflected back to a value for diagrams and documentation.
+
+In TypeScript, an `as const` object is a value and, through `typeof`, a type, so no singletons are needed. `op()` in `src/models.ts` takes the topology object and one `next` handler per live phase. Each handler's return type admits only that phase's declared successors (or staying put). The protocol is part of the type too: terminal phases have no outgoing edges, and every live phase must reach both `completed` and `errored`. The same object feeds `topologyOf` (runtime check), `toMermaid` and `toTla`.
+
+`test/typed.test.ts` holds type-level tests: an undeclared transition, a live phase that cannot complete, a terminal phase with outgoing edges, and a missing handler each fail to compile, so `npm run typecheck` fails if any of them is ever accepted.
+
+Edge case: this suits small enumerated phases. Value-dependent state stays in `data`, which the type does not constrain.
+
+### Composition as data: left to RSL
+
+crem represents composed machines as data, so they can be both executed and drawn. For rxjs-crem that layer would duplicate RSL (Reactive State Language), which already describes RxJS pipelines as data: one State per operator, `Next` as pipe order, plus `Choice`, `Retry`/`Catch` and sub-machines. So rxjs-crem stays at the operator level, and the composition level comes from RSL. See next steps.
+
 ## 4. What makes it scale: contracts per operator
 
 Each operator's Mealy machine gets a contract **assumption about input ⇒ guarantee about output**, checked once, in isolation. Contracts chain by the assume–guarantee rule:
@@ -129,6 +149,13 @@ Edge cases: contracts can be too weak (strengthen them, don't fall back to the p
 Limits: no coverage of time, teardown or higher-order behaviour yet; property tests sample inputs rather than prove; a wrong model passes everything, so models need human review — but they are short enough for that.
 
 ## 7. Next steps
+
+**Main integration step: RSL ↔ rxjs-crem.**
+
+- Map each RSL State to its operator's model here, `Next` to `andThen`, `Choice` to `alternative`, `Retry` to a `feedback`-shaped loop. The composed model becomes a test oracle for the RSL runtime, extending its differential test gate.
+- Render the pipeline-level diagram from the RSL document, with each State linked to its operator's typed topology from this repo.
+
+Further steps:
 
 - Model-check the generated and hand-written TLA+ files with TLC.
 - Add `exhaustMap` (`idle | busy` policy) as the first lifecycle operator.

@@ -9,6 +9,7 @@ Ideas from the Haskell library [crem](https://github.com/marcosh/crem) (composit
 | Composition laws | `Category` (`id`, `.`), `Profunctor` (`lmap`, `rmap`) | Identity, associativity and `map` fusion checked on real RxJS `pipe` | `src/laws.ts` |
 | Mealy model as oracle | Machines are explicit Mealy machines | Small reference model per operator; the real operator must produce the same notifications | `src/mealy.ts`, `src/models.ts` |
 | Declared topology | Allowed transitions are declared and rendered | `Topology` objects drive a runtime check, Mermaid diagrams and generated TLA+ modules | `src/topology.ts`, `src/tla.ts` |
+| Typed topology | `Machine (topology :: Topology vertex) input output` | One `as const` object per operator is checked by the compiler (illegal transitions don't compile) and also rendered | `src/models.ts`, `test/typed.test.ts` |
 | Hidden state | `StateMachine input output` hides the state type | `Machine<I, O>` hides state in a closure; `andThen` (sequential), `parallel`, `both` (fanOut), `alternative`, `either` (fanIn, models `merge`) and `feedback` (models `expand`) compose it | `src/machine.ts` |
 
 Operators covered: `map`, `filter`, `distinctUntilChanged`, `scan`, `take(n ≥ 1)`.
@@ -31,8 +32,8 @@ Mealy model ─────► differential test against the real RxJS operator
 
 ```bash
 npm install
-npm test        # 46 property-based checks with fast-check
-npm run typecheck
+npm test        # 52 tests: property-based checks with fast-check, plus runtime checks of the typed models
+npm run typecheck   # also runs the type-level tests (expected compile errors)
 npm run gen     # writes generated/*.mmd, *.tla, *.cfg
 ```
 
@@ -45,7 +46,7 @@ java -cp tla2tools.jar tlc2.TLC -config tla/DistinctIdempotent.cfg tla/DistinctI
 
 ## Status
 
-- The TypeScript checks run and pass (46 tests), including one that shows a deliberately buggy `distinctUntilChanged` (`src/buggy.ts`) being caught with a counterexample of at most four notifications.
+- The TypeScript checks run and pass (52 tests), including one that shows a deliberately buggy `distinctUntilChanged` (`src/buggy.ts`) being caught with a counterexample of at most four notifications.
 - The TLA+ files in `generated/` and `tla/` have **not been model-checked yet**. Running TLC was not possible in the environment where the prototype was built.
 
 ## Further reading
@@ -54,6 +55,10 @@ java -cp tla2tools.jar tlc2.TLC -config tla/DistinctIdempotent.cfg tla/DistinctI
 - [Talk on crem by its author, Marco Perone](https://www.youtube.com/watch?v=w8mnp4SGT_M&t=2246s) (video).
 - `docs/ideas.md` — the design discussion behind this prototype: Mealy machines for operator policies, TLA+/LTL for pipelines, contracts per operator, and which crem ideas transfer.
 - `docs/tla-integration.md` — how the TypeScript side and the TLA+ side connect.
+
+## Next: RSL integration
+
+Composition as data is left to RSL (Reactive State Language), which already describes RxJS pipelines as State documents. The planned bridge maps RSL States to the operator models here, so a composed model can serve as the test oracle for the RSL runtime. Details in `docs/ideas.md`, section 7.
 
 ## Contributors
 
