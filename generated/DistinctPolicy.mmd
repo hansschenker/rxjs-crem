@@ -1,0 +1,9 @@
+stateDiagram-v2
+  [*] --> empty
+  empty --> seen
+  empty --> completed
+  empty --> errored
+  seen --> completed
+  seen --> errored
+  completed --> [*]
+  errored --> [*]

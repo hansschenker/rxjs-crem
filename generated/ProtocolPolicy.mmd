@@ -1,0 +1,6 @@
+stateDiagram-v2
+  [*] --> active
+  active --> completed
+  active --> errored
+  completed --> [*]
+  errored --> [*]
